@@ -1,0 +1,295 @@
+SPEAKUP — USERS AND USE CASES
+
+1. TRAINEE (PRIMARY USER)
+
+Description:
+The Trainee is the main user of SpeakUp. They use the application to practice public speaking, receive AI feedback, track progress, and improve their speaking skills.
+
+Use Cases:
+- Register an account
+- Log in
+- Log out
+- Manage profile
+- Manage notifications
+- Select a speaking category
+- Select an exercise
+- Select an AI evaluator
+- Check evaluator availability
+- Receive a random speaking topic
+- Start a practice session
+- Record speech using audio
+- Record speech using video
+- Pause/stop recording
+- Review a recording
+- Retake a recording
+- Submit a recording for evaluation
+- View AI analysis
+- View transcript
+- View speaking score
+- View pace score
+- View clarity score
+- View confidence score
+- View strengths
+- View areas for improvement
+- View personalized recommendations
+- Practice again
+- View daily brief
+- View random topic
+- View current streak
+- View longest streak
+- View skill level
+- View progress
+- View roadmap
+- View roadmap stages
+- Complete daily challenge
+- Participate in speaking challenges
+- Challenge another user/friend
+- View challenge results
+- Manage subscription/plan
+- Make payment
+- View payment status
+- View notifications
+
+Main workflow:
+Login/Register
+    -> Home
+    -> Select Category
+    -> Select AI Evaluator
+    -> Check Availability
+    -> Receive Topic
+    -> Start Practice
+    -> Record Speech
+    -> Review Recording
+    -> Submit
+    -> AI Analysis
+    -> View Results
+    -> View Recommendations
+    -> Track Progress
+    -> Practice Again
+
+
+2. ADMIN
+
+Description:
+The Admin manages the content, users, training structure, and configuration of the SpeakUp platform.
+
+Use Cases:
+- Log in
+- Log out
+- Manage users
+- Create user
+- View user
+- Update user
+- Delete/deactivate user
+- Manage categories
+- Create category
+- Update category
+- Delete/deactivate category
+- Manage exercises
+- Create exercise
+- View exercise
+- Update exercise
+- Delete/deactivate exercise
+- Manage skill rules
+- Create skill rule
+- View skill rule
+- Update skill rule
+- Delete skill rule
+- Manage roadmap
+- Create roadmap
+- View roadmap
+- Update roadmap
+- Delete roadmap
+- Manage roadmap stages
+- Create stage
+- View stage
+- Update stage
+- Delete stage
+- Manage daily briefs/content
+- Manage topics
+- Monitor platform content
+- Manage notifications where applicable
+
+
+3. VISITOR / UNAUTHENTICATED USER
+
+Description:
+A Visitor is a person who has not yet created an account or logged into SpeakUp.
+
+Use Cases:
+- View SpeakUp introduction
+- View onboarding
+- Learn about SpeakUp
+- View main application benefits
+- Create an account
+- Log in
+- Start the registration process
+
+The Visitor should have a simple experience focused on understanding the value of SpeakUp and becoming a Trainee.
+
+
+4. AI EVALUATOR / AI COACH
+
+Description:
+The AI evaluator is an external/intelligent service that analyzes the trainee's speaking performance. It should behave like a supportive coach rather than a judge.
+
+Possible evaluator contexts:
+- Courtroom / Lawyer
+- Boardroom / Corporate Panel
+- TEDx / Inspirational Speaker
+
+Use Cases:
+- Receive submitted speech
+- Analyze speech
+- Generate transcript
+- Evaluate speaking pace
+- Evaluate clarity
+- Evaluate confidence
+- Evaluate overall speaking performance
+- Identify strengths
+- Identify weaknesses/areas for improvement
+- Generate personalized feedback
+- Generate recommendations
+- Suggest learning resources
+- Return analysis results
+
+
+5. PAYMENT SERVICE / PAYMENT API
+
+Description:
+The Payment API is an external service used to process payments for SpeakUp plans.
+
+Use Cases:
+- Receive payment request
+- Process payment
+- Confirm transaction
+- Return payment status
+- Return transaction information
+- Report payment failure
+
+
+6. SPEECH / MEDIA SERVICE
+
+Description:
+A supporting service responsible for handling recorded audio/video.
+
+Use Cases:
+- Receive audio recording
+- Receive video recording
+- Store/process recording
+- Return upload status
+- Provide recording for AI analysis
+
+
+7. NOTIFICATION SERVICE
+
+Description:
+A supporting service responsible for delivering notifications to users.
+
+Use Cases:
+- Send daily practice reminder
+- Send streak reminder
+- Notify user when AI analysis is ready
+- Notify user about recommendations
+- Notify user about challenges
+- Notify user about new daily briefs
+- Mark notification as read
+
+
+8. ACTOR RELATIONSHIP SUMMARY
+
+Visitor
+    -> Register
+    -> Login
+    -> View Onboarding
+
+Trainee
+    -> Performs speaking practice
+    -> Uses AI evaluator
+    -> Tracks progress
+    -> Uses roadmap
+    -> Completes challenges
+    -> Manages plan/payment
+    -> Receives notifications
+
+Admin
+    -> Manages users
+    -> Manages categories
+    -> Manages exercises
+    -> Manages skill rules
+    -> Manages roadmap
+    -> Manages stages
+    -> Manages topics/content
+
+AI Evaluator
+    -> Analyzes trainee speech
+    -> Generates feedback
+    -> Generates recommendations
+
+Payment API
+    -> Processes payments
+    -> Confirms transactions
+
+Notification Service
+    -> Sends notifications
+
+Speech/Media Service
+    -> Handles recorded speech
+
+
+9. CORE USE CASES FOR THE MVP
+
+If implementing SpeakUp in phases, prioritize:
+
+1. Register
+2. Login
+3. View Home
+4. Select Category
+5. Select AI Evaluator
+6. Check Evaluator Availability
+7. Receive Random Topic
+8. Start Practice
+9. Record Speech
+10. Review Recording
+11. Submit Recording
+12. AI Analyze Speech
+13. View AI Feedback
+14. View Score
+15. View Strengths and Improvements
+16. View Recommendations
+17. View Progress
+18. View Streak
+19. View Roadmap
+20. Manage Profile
+
+After the MVP:
+
+21. Daily Challenge
+22. Challenges/Friend Challenges
+23. Daily Brief
+24. Notifications
+25. Subscription Plans
+26. Payments
+27. Advanced progress tracking
+28. Admin content management
+
+
+10. IMPORTANT UX PRINCIPLE
+
+SpeakUp is designed to make users feel safe and motivated to practice public speaking every day.
+
+The AI should feel like a coach, not a judge.
+
+The main user loop is:
+
+PRACTICE
+    ->
+FEEDBACK
+    ->
+IMPROVEMENT
+    ->
+CONFIDENCE
+    ->
+DAILY HABIT
+
+The application should remain simple, responsive, encouraging, and easy to navigate.
