@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../models/book_recommendation.dart';
@@ -7,14 +8,29 @@ import '../models/category.dart';
 import '../models/daily_knowledge_brief.dart';
 import '../models/practice_session.dart';
 
-
 class ApiService {
   static final ApiService instance = ApiService._internal();
   factory ApiService() => instance;
   ApiService._internal();
 
-  // Local Node.js Express REST Backend URL
-  final String baseUrl = 'http://localhost:5000/api';
+  // Backend API URLs
+  static const String liveServerUrl = 'https://speakup-backend-tqzg.onrender.com/api';
+  static const String localServerUrl = 'http://localhost:5000/api';
+
+  // Automatically detects if running locally on localhost or in production
+  static String get _detectBaseUrl {
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1' || host.isEmpty) {
+        return localServerUrl;
+      }
+      return liveServerUrl;
+    }
+    return const bool.fromEnvironment('dart.vm.product') ? liveServerUrl : localServerUrl;
+  }
+
+  // Active base URL
+  String baseUrl = _detectBaseUrl;
   String? _authToken;
 
   void setAuthToken(String? token) {
@@ -212,6 +228,10 @@ class ApiService {
     required String categoryId,
     required String topic,
     required int durationSeconds,
+    String? transcript,
+    String? documentContext,
+    String? moduleType,
+    List<Map<String, dynamic>>? audienceQuestions,
   }) async {
     try {
       final res = await http.post(
@@ -224,6 +244,10 @@ class ApiService {
           'categoryId': categoryId,
           'topic': topic,
           'durationSeconds': durationSeconds,
+          if (transcript != null && transcript.trim().isNotEmpty) 'transcript': transcript.trim(),
+          if (documentContext != null && documentContext.trim().isNotEmpty) 'documentContext': documentContext.trim(),
+          if (moduleType != null) 'moduleType': moduleType,
+          if (audienceQuestions != null && audienceQuestions.isNotEmpty) 'audienceQuestions': audienceQuestions,
         }),
       );
       if (res.statusCode == 200 || res.statusCode == 201) {
@@ -234,6 +258,24 @@ class ApiService {
       developer.log('[ApiService] submitAndAnalyzeSession error: $e');
     }
     return null;
+  }
+
+  Future<bool> updateSessionQA(String sessionId, List<AudienceQuestion> questions) async {
+    try {
+      final payload = questions.map((q) => {
+        'question': q.question,
+        'speakerAnswer': q.speakerAnswer,
+      }).toList();
+      final res = await http.put(
+        Uri.parse('$baseUrl/sessions/$sessionId/qa'),
+        headers: _headers,
+        body: jsonEncode({'audienceQuestions': payload}),
+      );
+      return res.statusCode == 200;
+    } catch (e) {
+      developer.log('[ApiService] updateSessionQA error: $e');
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>?> completeNode(String nodeId) async {
@@ -620,6 +662,52 @@ class ApiService {
     } catch (e) {
       developer.log('[ApiService] subscribePlan error: $e');
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> processDigiPayPayment({
+    required String planId,
+    required int amount,
+    required String phoneNumber,
+    required String operator,
+    String? email,
+    String? userId,
+    String? paymentMethod,
+    Map<String, dynamic>? cardDetails,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/subscriptions/process-payment'),
+        headers: _headers,
+        body: jsonEncode({
+          'planId': planId,
+          'amount': amount,
+          'phoneNumber': phoneNumber,
+          'operator': operator,
+          'email': email,
+          if (userId != null) 'userId': userId,
+          'paymentMethod': paymentMethod ?? 'MOBILE_MONEY',
+          if (cardDetails != null) 'cardDetails': cardDetails,
+        }),
+      );
+
+      if (res.statusCode == 200) {
+        try {
+          return jsonDecode(res.body) as Map<String, dynamic>;
+        } catch (_) {
+          return {'success': true, 'message': 'Payment approved successfully!'};
+        }
+      } else {
+        try {
+          final err = jsonDecode(res.body);
+          return {'success': false, 'message': err['error'] ?? err['message'] ?? 'Payment failed'};
+        } catch (_) {
+          return {'success': false, 'message': 'Server response (${res.statusCode}): Please make sure your backend is running.'};
+        }
+      }
+    } catch (e) {
+      developer.log('[ApiService] processDigiPayPayment error: $e');
+      return {'success': false, 'message': 'Connection error: Please check your internet or local server.'};
     }
   }
 

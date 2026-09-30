@@ -4,6 +4,11 @@ import '../../constants/app_colors.dart';
 import '../../providers/app_provider.dart';
 
 class CalendarStreakScreen extends StatelessWidget {
+  static const List<String> _monthNames = [
+    'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+    'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+  ];
+
   const CalendarStreakScreen({super.key});
 
   @override
@@ -44,14 +49,16 @@ class CalendarStreakScreen extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Text('🔥', style: TextStyle(fontSize: 44)),
+                  Text(provider.streakDays > 0 ? '🔥' : '🎯', style: const TextStyle(fontSize: 44)),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${provider.streakDays} DAY ACTIVE STREAK!',
+                          provider.streakDays > 0
+                              ? '${provider.streakDays} DAY ACTIVE STREAK!'
+                              : 'START YOUR STREAK TODAY!',
                           style: const TextStyle(
                             color: AppColors.white,
                             fontWeight: FontWeight.w900,
@@ -60,9 +67,11 @@ class CalendarStreakScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'The system automatically ticks your streak every day you practice an exercise.',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        Text(
+                          provider.streakDays > 0
+                              ? 'The system automatically ticks your streak every day you complete a practice.'
+                              : 'Complete at least one practice today to tick your calendar and start your daily streak!',
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                       ],
                     ),
@@ -75,9 +84,9 @@ class CalendarStreakScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'SEPTEMBER 2026',
-                  style: TextStyle(
+                Text(
+                  '${_monthNames[now.month - 1]} ${now.year}',
+                  style: const TextStyle(
                     color: AppColors.mainText,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -85,7 +94,7 @@ class CalendarStreakScreen extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${completedDates.length} Days Practiced',
+                  '${completedDates.length} ${completedDates.length == 1 ? 'Day' : 'Days'} Practiced',
                   style: const TextStyle(
                     color: AppColors.successGreen,
                     fontWeight: FontWeight.bold,
@@ -124,57 +133,66 @@ class CalendarStreakScreen extends StatelessWidget {
                   const Divider(color: AppColors.cardBorder),
                   const SizedBox(height: 12),
 
-                  // September 2026 Grid (Starts on Tuesday = offset 2, 30 days)
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 7,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                    ),
-                    itemCount: 32, // 2 padding + 30 days
-                    itemBuilder: (context, idx) {
-                      if (idx < 2) {
-                        return const SizedBox.shrink();
-                      }
-                      final dayNum = idx - 1;
-                      final isPracticed = completedDates.contains(dayNum);
-                      final isToday = dayNum == now.day;
+                  // Dynamic Monthly Grid
+                  Builder(
+                    builder: (context) {
+                      final firstDayOfMonth = DateTime(now.year, now.month, 1);
+                      final firstWeekdayOffset = firstDayOfMonth.weekday % 7; // Sunday=0, Monday=1...
+                      final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+                      final totalGridCells = firstWeekdayOffset + daysInMonth;
 
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: isPracticed
-                              ? AppColors.successGreen
-                              : isToday
-                                  ? AppColors.motivationCoral.withValues(alpha: 0.15)
-                                  : AppColors.background,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isToday
-                                ? AppColors.motivationCoral
-                                : isPracticed
-                                    ? AppColors.successGreen
-                                    : AppColors.cardBorder,
-                            width: isToday ? 2.0 : 1.0,
-                          ),
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 7,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
                         ),
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '$dayNum',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: isPracticed ? AppColors.white : AppColors.mainText,
+                        itemCount: totalGridCells,
+                        itemBuilder: (context, idx) {
+                          if (idx < firstWeekdayOffset) {
+                            return const SizedBox.shrink();
+                          }
+                          final dayNum = idx - firstWeekdayOffset + 1;
+                          final isPracticed = completedDates.contains(dayNum);
+                          final isToday = dayNum == now.day;
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: isPracticed
+                                  ? AppColors.successGreen
+                                  : isToday
+                                      ? AppColors.motivationCoral.withValues(alpha: 0.15)
+                                      : AppColors.background,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isToday
+                                    ? AppColors.motivationCoral
+                                    : isPracticed
+                                        ? AppColors.successGreen
+                                        : AppColors.cardBorder,
+                                width: isToday ? 2.0 : 1.0,
                               ),
                             ),
-                            if (isPracticed)
-                              const Text('🔥', style: TextStyle(fontSize: 10)),
-                          ],
-                        ),
+                            alignment: Alignment.center,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '$dayNum',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: isPracticed ? AppColors.white : AppColors.mainText,
+                                  ),
+                                ),
+                                if (isPracticed)
+                                  const Text('🔥', style: TextStyle(fontSize: 10)),
+                              ],
+                            ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -195,11 +213,23 @@ class CalendarStreakScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            _buildMilestoneRow('🔥 7-Day Streak Badge', 'Unlocked Aug 24', true),
+            _buildMilestoneRow(
+              '🔥 7-Day Streak Badge',
+              provider.streakDays >= 7 ? 'Unlocked' : 'In progress (${provider.streakDays}/7)',
+              provider.streakDays >= 7,
+            ),
             const SizedBox(height: 8),
-            _buildMilestoneRow('⚡ 14-Day Streak Badge', 'Unlocked Aug 31', true),
+            _buildMilestoneRow(
+              '⚡ 14-Day Streak Badge',
+              provider.streakDays >= 14 ? 'Unlocked' : 'In progress (${provider.streakDays}/14)',
+              provider.streakDays >= 14,
+            ),
             const SizedBox(height: 8),
-            _buildMilestoneRow('🏆 30-Day Master Speaker Badge', 'In progress (14/30)', false),
+            _buildMilestoneRow(
+              '🏆 30-Day Master Speaker Badge',
+              provider.streakDays >= 30 ? 'Unlocked' : 'In progress (${provider.streakDays}/30)',
+              provider.streakDays >= 30,
+            ),
           ],
         ),
       ),

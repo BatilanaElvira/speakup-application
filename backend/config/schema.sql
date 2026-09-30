@@ -1,8 +1,5 @@
 -- SpeakUp Database Schema (MySQL)
 
-CREATE DATABASE IF NOT EXISTS speakup_db;
-USE speakup_db;
-
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(64) PRIMARY KEY,

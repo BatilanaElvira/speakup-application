@@ -8,9 +8,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'speakup_jwt_secret_key_2026_super_
 // Temporary store for verification codes (in-memory with 15 min validity)
 const resetCodes = new Map();
 
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
 class AuthService {
   async register({ name, email, password, role = 'Trainee' }) {
-    const existing = await userRepository.findByEmail(email);
+    const normalizedEmail = (email || '').trim();
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    const existing = await userRepository.findByEmail(normalizedEmail);
     if (existing) {
       throw new Error('User email already registered');
     }
@@ -37,15 +47,14 @@ class AuthService {
   }
 
   async login({ email, password, role }) {
-    let user = await userRepository.findByEmail(email);
+    const normalizedEmail = (email || '').trim();
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    const user = await userRepository.findByEmail(normalizedEmail);
     if (!user) {
-      // Auto-register convenience for demo / testing if not existent
-      return await this.register({
-        name: email.split('@')[0],
-        email,
-        password: password || 'password123',
-        role: role || (email.toLowerCase().includes('admin') ? 'Admin' : 'Trainee')
-      });
+      throw new Error('No account found with this email. Please sign up first.');
     }
 
     if (password && user.password_hash) {

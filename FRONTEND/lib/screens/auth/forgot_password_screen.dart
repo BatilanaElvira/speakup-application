@@ -19,6 +19,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
 
+  static final RegExp _emailRegex = RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
+
   int _currentStep = 1; // 1: Email, 2: Code, 3: New Password
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -43,10 +45,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
+  bool _isValidEmail(String email) => _emailRegex.hasMatch(email.trim());
+
   Future<void> _handleSendCode() async {
     final email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      _showSnackBar('Please enter a valid email address.');
+    if (email.isEmpty || !_isValidEmail(email)) {
+      _showSnackBar('Please enter a valid email address in the format name@example.com.');
       return;
     }
 

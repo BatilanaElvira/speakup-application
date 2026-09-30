@@ -19,9 +19,13 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
 
+  static final RegExp _emailRegex = RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
+
   bool _isSignUp = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  bool _isValidEmail(String email) => _emailRegex.hasMatch(email.trim());
 
   Future<void> _handleAuthentication() async {
     final email = _emailController.text.trim();
@@ -31,6 +35,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
     if (email.isEmpty) {
       _showSnackBar('Please enter your email address.');
+      return;
+    }
+
+    if (!_isValidEmail(email)) {
+      _showSnackBar('Please enter a valid email address in the format name@example.com.');
       return;
     }
 
@@ -161,6 +170,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           controller: _emailController,
                           label: 'Email Address',
                           icon: Icons.email_outlined,
+                          keyboardType: TextInputType.emailAddress,
                           isDark: isDark,
                         ),
                         const SizedBox(height: 14),
@@ -339,6 +349,7 @@ class _AuthScreenState extends State<AuthScreen> {
     required String label,
     required IconData icon,
     bool isPassword = false,
+    TextInputType? keyboardType,
     required bool isDark,
   }) {
     return Container(

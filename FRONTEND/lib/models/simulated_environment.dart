@@ -23,6 +23,9 @@ class SimulatedEnvironment {
     required this.evaluatorLogicDescription,
   });
 
+  String get noiseLevel => ambientSoundName;
+  String get audienceType => subtitle;
+
   static const List<SimulatedEnvironment> environments = [
     SimulatedEnvironment(
       id: 'boardroom',

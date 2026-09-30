@@ -146,10 +146,14 @@ class ProfileScreen extends StatelessWidget {
                         ),
                         child: Column(
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              runSpacing: 8,
+                              spacing: 8,
                               children: [
                                 Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Text('⚡ Experience Points:', style: TextStyle(fontSize: 12, color: AppColors.secondaryText)),
                                     const SizedBox(width: 4),
@@ -163,9 +167,17 @@ class ProfileScreen extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                Text(
-                                  'Next: ${provider.nextLevelName} (${provider.nextLevelTargetXP} XP)',
-                                  style: TextStyle(fontSize: 11, color: provider.userLevelColor, fontWeight: FontWeight.bold),
+                                Flexible(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 150),
+                                    child: Text(
+                                      'Next: ${provider.nextLevelName} (${provider.nextLevelTargetXP} XP)',
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(fontSize: 11, color: provider.userLevelColor, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -207,20 +219,28 @@ class ProfileScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              runSpacing: 8,
+                              spacing: 8,
                               children: [
                                 Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Icon(Icons.workspace_premium_rounded, color: AppColors.primaryCoral, size: 18),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      'ALL-TIME SCORES SINCE REGISTRATION',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w900,
-                                        color: isDark ? Colors.white : AppColors.mainText,
-                                        letterSpacing: 0.5,
+                                    Flexible(
+                                      child: Text(
+                                        'ALL-TIME SCORES SINCE REGISTRATION',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                          color: isDark ? Colors.white : AppColors.mainText,
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
                                     ),
                                   ],

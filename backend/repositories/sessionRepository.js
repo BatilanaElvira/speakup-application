@@ -95,7 +95,22 @@ class SessionRepository {
     };
 
     db.memoryStore.practice_sessions.unshift(newSession);
+    db.persistMemoryStore();
     return this._formatSession(newSession);
+  }
+
+  async updateQAAnswers(id, audienceQuestions) {
+    const jsonStr = JSON.stringify(audienceQuestions);
+    try {
+      await db.query('UPDATE practice_sessions SET audience_questions_json = ? WHERE id = ?', [jsonStr, id]);
+    } catch (_) {}
+    const mem = db.memoryStore.practice_sessions.find(s => s.id === id);
+    if (mem) {
+      mem.audience_questions_json = jsonStr;
+      db.persistMemoryStore();
+      return this._formatSession(mem);
+    }
+    return null;
   }
 
   _formatSession(s) {

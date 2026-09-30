@@ -230,36 +230,110 @@ const memoryStore = {
 
 
 
+const STORAGE_DIR = path.join(__dirname, '../.storage');
+const STORAGE_FILE = path.join(STORAGE_DIR, 'speakup_storage.json');
+const LEGACY_STORAGE_FILE = path.join(__dirname, '../data/speakup_storage.json');
+
+function loadPersistentStore() {
+  try {
+    const fileToLoad = fs.existsSync(STORAGE_FILE)
+        ? STORAGE_FILE
+        : (fs.existsSync(LEGACY_STORAGE_FILE) ? LEGACY_STORAGE_FILE : null);
+    if (fileToLoad) {
+      const raw = fs.readFileSync(fileToLoad, 'utf8');
+      const loaded = JSON.parse(raw);
+      if (loaded && loaded.users && Array.isArray(loaded.users)) {
+        memoryStore.users = loaded.users;
+      }
+      if (loaded && loaded.practice_sessions && Array.isArray(loaded.practice_sessions)) {
+        memoryStore.practice_sessions = loaded.practice_sessions;
+      }
+      if (loaded && loaded.user_node_progress && Array.isArray(loaded.user_node_progress)) {
+        memoryStore.user_node_progress = loaded.user_node_progress;
+      }
+      console.log(`💾 [Persistent Store] Loaded ${memoryStore.users.length} users and ${memoryStore.practice_sessions.length} sessions from disk (${fileToLoad}).`);
+    } else {
+      persistMemoryStore();
+    }
+  } catch (err) {
+    console.warn('⚠️ [Persistent Store Notice] Error loading disk store:', err.message);
+  }
+}
+
+function persistMemoryStore() {
+  try {
+    if (!fs.existsSync(STORAGE_DIR)) {
+      fs.mkdirSync(STORAGE_DIR, { recursive: true });
+    }
+    const toSave = {
+      users: memoryStore.users,
+      practice_sessions: memoryStore.practice_sessions,
+      user_node_progress: memoryStore.user_node_progress,
+      updated_at: new Date()
+    };
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(toSave, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('⚠️ [Persistent Store Notice] Error saving to disk:', err.message);
+  }
+}
+
+// Initial load from disk
+loadPersistentStore();
+
 async function initDB() {
   const host = process.env.DB_HOST || 'localhost';
   const port = process.env.DB_PORT || 3306;
   const user = process.env.DB_USER || 'root';
   const password = process.env.DB_PASSWORD || '';
-  const database = process.env.DB_NAME || 'speakup_db';
+  const database = process.env.DB_NAME || 'defaultdb';
+  const uri = process.env.DATABASE_URL || process.env.DB_URI;
+  const isCloud = (host !== 'localhost' && host !== '127.0.0.1') || uri != null;
+  const useSsl = process.env.DB_SSL === 'true' || isCloud;
+
+  const sslConfig = useSsl ? { rejectUnauthorized: false } : undefined;
 
   try {
-    // Attempt connecting to MySQL server
-    const connection = await mysql.createConnection({
-      host,
-      port: Number(port),
-      user,
-      password,
-      multipleStatements: true
-    });
-    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
-    await connection.end();
+    if (uri) {
+      pool = mysql.createPool({
+        uri,
+        ssl: sslConfig,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        multipleStatements: true
+      });
+    } else {
+      if (!isCloud) {
+        try {
+          const connection = await mysql.createConnection({
+            host,
+            port: Number(port),
+            user,
+            password,
+            multipleStatements: true
+          });
+          await connection.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
+          await connection.end();
+        } catch (_) {}
+      }
 
-    pool = mysql.createPool({
-      host,
-      port: Number(port),
-      user,
-      password,
-      database,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      multipleStatements: true
-    });
+      pool = mysql.createPool({
+        host,
+        port: Number(port),
+        user,
+        password,
+        database,
+        ssl: sslConfig,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        multipleStatements: true
+      });
+    }
+
+    // Test connection
+    const testConn = await pool.getConnection();
+    testConn.release();
 
     // Execute schema and seed
     const schemaPath = path.join(__dirname, 'schema.sql');
@@ -277,12 +351,14 @@ async function initDB() {
 
     console.log(`=======================================================`);
     console.log(`🟢 [MySQL Persistent DB] Connected to database '${database}' on ${host}:${port}`);
+    if (useSsl) console.log(`🔒 [SSL Encrypted] Cloud database connection secure.`);
     console.log(`💾 All logins, practice sessions, XP, and streak data are PERMANENTLY saved to MySQL.`);
     console.log(`=======================================================`);
     isUsingFallback = false;
   } catch (err) {
-    console.warn(`[MySQL Notice] Local MySQL connection failed (${err.message}). Activating In-Memory State Engine Fallback.`);
+    console.warn(`[MySQL Notice] MySQL connection notice (${err.message}). Activating persistent JSON file store.`);
     isUsingFallback = true;
+    loadPersistentStore();
   }
 }
 
@@ -302,5 +378,7 @@ module.exports = {
   initDB,
   query,
   memoryStore,
+  persistMemoryStore,
   getIsFallback: () => isUsingFallback
 };
+

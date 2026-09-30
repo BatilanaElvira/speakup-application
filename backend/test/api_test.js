@@ -1,10 +1,34 @@
 const http = require('http');
+const net = require('net');
+const { startServer } = require('../server');
+
+const PORT = process.env.PORT || 5000;
+
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(800);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, '127.0.0.1');
+  });
+}
 
 function makeRequest(path, method = 'GET', data = null) {
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'localhost',
-      port: 5000,
+      hostname: '127.0.0.1',
+      port: PORT,
       path,
       method,
       headers: {
@@ -14,7 +38,7 @@ function makeRequest(path, method = 'GET', data = null) {
 
     const req = http.request(options, (res) => {
       let body = '';
-      res.on('data', (chunk) => body += chunk);
+      res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try {
           resolve({ status: res.statusCode, body: JSON.parse(body) });
@@ -35,9 +59,21 @@ function makeRequest(path, method = 'GET', data = null) {
 
 async function runTests() {
   console.log('--- RUNNING SPEAKUP BACKEND API INTEGRATION TESTS ---');
+  let spawnedServer = null;
+
   try {
+    const open = await isPortOpen(PORT);
+    if (!open) {
+      console.log(`ℹ️  Backend is not running on port ${PORT}. Starting in-process test server...`);
+      spawnedServer = await startServer(PORT);
+      // Give server a moment to settle
+      await new Promise(r => setTimeout(r, 600));
+    } else {
+      console.log(`ℹ️  Connected to running backend server on port ${PORT}.`);
+    }
+
     const health = await makeRequest('/api/health');
-    console.log('[Test 1] GET /api/health:', health.status, health.body.status);
+    console.log('[Test 1] GET /api/health:', health.status, health.body.status || 'OK');
 
     const categories = await makeRequest('/api/categories');
     console.log('[Test 2] GET /api/categories:', categories.status, `Count: ${categories.body.count}`);
@@ -55,7 +91,8 @@ async function runTests() {
       name: 'Google Test User',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
     });
-    console.log('[Test 5] POST /api/auth/social-login (Google):', socialLogin.status, `Level: ${socialLogin.body.user ? socialLogin.body.user.level : 'N/A'}`);
+    const userRole = socialLogin.body.user ? socialLogin.body.user.role : 'N/A';
+    console.log('[Test 5] POST /api/auth/social-login (Google):', socialLogin.status, `Role: ${userRole}`);
 
     const forgotPw = await makeRequest('/api/auth/forgot-password', 'POST', { email: 'amina@speakup.ai' });
     console.log('[Test 6] POST /api/auth/forgot-password:', forgotPw.status, `Code Generated: ${forgotPw.body.code}`);
@@ -74,7 +111,10 @@ async function runTests() {
     console.log('[Test 8] POST /api/auth/reset-password:', resetPw.status, resetPw.body.message);
 
     const plans = await makeRequest('/api/subscriptions/plans');
-    console.log('[Test 9] GET /api/subscriptions/plans:', plans.status, `Plans: ${plans.body.data ? plans.body.data.map(p => `${p.name} (${p.price} ${p.currency})`).join(', ') : 'N/A'}`);
+    const planSummary = plans.body.data
+      ? plans.body.data.map(p => `${p.name} ($${p.priceMonthly ?? 0}/mo)`).join(', ')
+      : 'N/A';
+    console.log('[Test 9] GET /api/subscriptions/plans:', plans.status, `Plans: ${planSummary}`);
 
     const session = await makeRequest('/api/sessions/analyze', 'POST', {
       mode: 'full',
@@ -89,8 +129,17 @@ async function runTests() {
     console.log('--- ALL BACKEND INTEGRATION TESTS COMPLETED SUCCESSFULLY ---');
   } catch (err) {
     console.error('Test execution failed:', err.message);
+    process.exitCode = 1;
+  } finally {
+    if (spawnedServer) {
+      console.log('ℹ️  Closing in-process test server...');
+      spawnedServer.close(() => {
+        process.exit(process.exitCode || 0);
+      });
+      // Safety timeout
+      setTimeout(() => process.exit(process.exitCode || 0), 1000);
+    }
   }
 }
 
 runTests();
-

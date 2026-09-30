@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../models/subscription_plan.dart';
 import '../../providers/app_provider.dart';
+import '../../services/api_service.dart';
 
 class PaymentCheckoutModal extends StatefulWidget {
   final SubscriptionPlan plan;
@@ -51,7 +52,7 @@ class PaymentCheckoutModal extends StatefulWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your account has been upgraded to ${plan.title}. All premium AI evaluators, simulated environments, and unlimited speech practice are now fully unlocked!',
+              'Your DigiPay payment was verified. Your account has been upgraded to ${plan.title}. All premium AI evaluators, simulated environments, and unlimited speech practice are now active!',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, color: AppColors.secondaryText, height: 1.4),
             ),
@@ -118,17 +119,43 @@ class _PaymentCheckoutModalState extends State<PaymentCheckoutModal> {
     });
 
     final provider = Provider.of<AppProvider>(context, listen: false);
+    final planId = widget.plan.tier == SubscriptionTier.plus
+        ? 'enterprise'
+        : widget.plan.tier == SubscriptionTier.pro
+            ? 'pro'
+            : 'free';
 
-    // =========================================================================
-    // 💡 PAYMENT GATEWAY HOOK:
-    // When you are ready to integrate your live payment API (Stripe, Flutterwave,
-    // Paystack, MTN MoMo API, or Orange Money API), replace this simulation block
-    // with your HTTP request call.
-    // =========================================================================
-    await Future.delayed(const Duration(milliseconds: 1600));
+    final operatorCode = _selectedMoMoProvider.toLowerCase().contains('orange')
+        ? 'ORANGE'
+        : _selectedMoMoProvider.toLowerCase().contains('wave')
+            ? 'WAVE'
+            : 'MTN';
 
-    // Activate subscription in local provider & sync with backend database
-    await provider.changeSubscriptionPlan(widget.plan);
+    final paymentMethodCode = _selectedMethod == PaymentMethodType.mobileMoney
+        ? 'MOBILE_MONEY'
+        : _selectedMethod == PaymentMethodType.card
+            ? 'CARD'
+            : 'WALLET';
+
+    final cardDetails = _selectedMethod == PaymentMethodType.card
+        ? {
+            'number': _cardNumController.text.trim(),
+            'holder': _cardHolderController.text.trim(),
+            'exp': _cardExpiryController.text.trim(),
+            'cvv': _cardCvvController.text.trim(),
+          }
+        : null;
+
+    final response = await ApiService.instance.processDigiPayPayment(
+      userId: provider.userId,
+      planId: planId,
+      amount: _amountInFCFA,
+      phoneNumber: _phoneController.text.trim(),
+      operator: operatorCode,
+      email: provider.userEmail,
+      paymentMethod: paymentMethodCode,
+      cardDetails: cardDetails,
+    );
 
     if (!mounted) return;
 
@@ -136,7 +163,21 @@ class _PaymentCheckoutModalState extends State<PaymentCheckoutModal> {
       _isProcessing = false;
     });
 
-    Navigator.pop(context, true);
+    if (response != null && response['success'] == true) {
+      // Activate subscription in local provider & sync with database
+      await provider.changeSubscriptionPlan(widget.plan);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } else {
+      final errorMsg = response?['message'] ?? 'DigiPay payment could not be processed. Please verify your phone number or card.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ $errorMsg'),
+          backgroundColor: AppColors.errorRed,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   @override

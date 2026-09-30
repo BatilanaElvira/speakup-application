@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const db = require('../config/db');
+const geminiService = require('./geminiService');
 
 class CronService {
   constructor() {
@@ -129,7 +130,20 @@ class CronService {
       ? (forcedIndex % pool.length) 
       : Math.floor(Math.random() * pool.length);
     
-    const chosen = pool[topicIndex];
+    let chosen = pool[topicIndex];
+    if (geminiService && geminiService.isAvailable()) {
+      const dynamicBrief = await geminiService.generateDailyBrief(chosen.category);
+      if (dynamicBrief && dynamicBrief.topic && dynamicBrief.summary) {
+        chosen = {
+          category: dynamicBrief.category || chosen.category,
+          topic: dynamicBrief.topic,
+          emoji: dynamicBrief.emoji || chosen.emoji,
+          summary: dynamicBrief.summary,
+          keyFacts: Array.isArray(dynamicBrief.keyFacts) ? dynamicBrief.keyFacts : chosen.keyFacts,
+          suggestedPrompt: dynamicBrief.suggestedPrompt || chosen.suggestedPrompt
+        };
+      }
+    }
     const briefId = `brief_${Date.now()}`;
 
     const newBrief = {

@@ -1,7 +1,5 @@
 -- SpeakUp Database Seed Data
 
-USE speakup_db;
-
 -- Seed Categories
 INSERT IGNORE INTO categories (id, title, emoji, card_color_hex, sample_topics_json) VALUES
 ('tech', 'Technology', '💻', '#3157D5', '["Should artificial intelligence replace some entry-level jobs?","How quantum computing will transform cybersecurity.","Explaining blockchain technology to non-technical users."]'),

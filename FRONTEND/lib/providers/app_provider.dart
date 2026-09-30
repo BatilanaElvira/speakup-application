@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -11,6 +12,7 @@ import '../models/practice_session.dart';
 import '../models/simulated_environment.dart';
 import '../models/subscription_plan.dart';
 import '../services/api_service.dart';
+import '../services/local_storage_service.dart';
 
 class AppProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService.instance;
@@ -18,6 +20,7 @@ class AppProvider extends ChangeNotifier {
   bool get isBackendConnected => _isBackendConnected;
 
   AppProvider() {
+    _loadPersistentStorage();
     _initBackendConnection();
   }
 
@@ -75,6 +78,48 @@ class AppProvider extends ChangeNotifier {
 
   List<Map<String, dynamic>> get avatarPresets => _avatarPresets;
 
+  void _loadPersistentStorage() {
+    // 1. Merge users stored in persistent local storage into _localUsers
+    final storedUsers = LocalStorageService.loadUsers();
+    storedUsers.forEach((email, data) {
+      _localUsers[email.toLowerCase()] = Map<String, dynamic>.from(data);
+    });
+
+    // 2. Check if there was an active user session
+    final active = LocalStorageService.loadActiveSession();
+    if (active != null && active['email'] != null) {
+      final email = active['email'].toString().toLowerCase();
+      final userRecord = _localUsers[email] ?? active;
+      _userId = userRecord['id'] ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+      _userName = userRecord['name'] ?? 'Trainee';
+      _userEmail = userRecord['email'] ?? email;
+      _userRole = userRecord['role'] ?? 'Trainee';
+      _streakDays = userRecord['streak_days'] ?? 0;
+      if (userRecord['last_practice_date'] != null) {
+        _lastPracticeDate = DateTime.tryParse(userRecord['last_practice_date'].toString());
+      }
+      _totalXP = userRecord['total_xp'] ?? 0;
+      
+      final planId = userRecord['current_plan_id'] ?? 'free';
+      _currentPlan = SubscriptionPlan.plans.firstWhere(
+        (p) => (p.tier == SubscriptionTier.pro && planId == 'pro') ||
+               (p.tier == SubscriptionTier.plus && (planId == 'enterprise' || planId == 'plus')),
+        orElse: () => SubscriptionPlan.plans[0],
+      );
+      _isAuthenticated = true;
+    } else {
+      _isAuthenticated = false;
+      _currentPlan = SubscriptionPlan.plans[0]; // Free Trainee by default
+      _userId = '';
+      _userName = '';
+      _userEmail = '';
+      _streakDays = 0;
+      _lastPracticeDate = null;
+      _totalXP = 0;
+      _sessionHistory.clear();
+    }
+  }
+
   Future<void> _initBackendConnection() async {
     _isBackendConnected = await _apiService.checkHealth();
     if (_isBackendConnected) {
@@ -83,10 +128,12 @@ class AppProvider extends ChangeNotifier {
         _dailyBriefArchive.clear();
         _dailyBriefArchive.addAll(briefs);
       }
-      final history = await _apiService.fetchSessionHistory();
-      if (history != null && history.isNotEmpty) {
-        _sessionHistory.clear();
-        _sessionHistory.addAll(history);
+      if (_isAuthenticated && _userId.isNotEmpty) {
+        final history = await _apiService.fetchSessionHistory();
+        if (history != null) {
+          _sessionHistory.clear();
+          _sessionHistory.addAll(history);
+        }
       }
       final dbAvatars = await _apiService.getAvatarPresets();
       if (dbAvatars.isNotEmpty) {
@@ -99,12 +146,37 @@ class AppProvider extends ChangeNotifier {
 
   // Authentication & Role
   bool _isAuthenticated = false;
-  String _userEmail = 'amina@speakup.ai';
-  String _userName = 'Amina Bello';
+  String _userId = '';
+  String get userId => _userId;
+  String _userEmail = '';
+  String _userName = '';
   String? _userAvatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80';
   String _userRole = 'Trainee'; // 'Trainee' or 'Admin'
   bool _hasSeenSplash = false;
 
+  // Local user credentials cache (allows offline persistence and logging in anytime)
+  final Map<String, Map<String, dynamic>> _localUsers = {
+    'amina@speakup.ai': {
+      'id': 'usr_amina',
+      'name': 'Amina Bello',
+      'email': 'amina@speakup.ai',
+      'password': 'password123',
+      'role': 'Trainee',
+      'streak_days': 0,
+      'total_xp': 520,
+      'current_plan_id': 'free'
+    },
+    'admin@speakup.ai': {
+      'id': 'usr_admin',
+      'name': 'Platform Administrator',
+      'email': 'admin@speakup.ai',
+      'password': 'password123',
+      'role': 'Admin',
+      'streak_days': 30,
+      'total_xp': 2400,
+      'current_plan_id': 'enterprise'
+    }
+  };
 
   // Global App Settings (Dark Mode & Audio Volume)
   bool _isDarkMode = false;
@@ -114,8 +186,8 @@ class AppProvider extends ChangeNotifier {
   SubscriptionPlan _currentPlan = SubscriptionPlan.plans[0];
 
   // Streak & Points
-  int _streakDays = 7;
-  int _totalXP = 520;
+  int _streakDays = 0;
+  int _totalXP = 0;
   DateTime? _lastPracticeDate;
 
   // Career / Lifetime All-Time Scores & Registration Stats
@@ -128,7 +200,34 @@ class AppProvider extends ChangeNotifier {
       _sessionHistory.isEmpty ? 82.5 : (_sessionHistory.fold(0, (sum, item) => sum + item.overallScore) / _sessionHistory.length);
   int get highestSessionScore =>
       _sessionHistory.isEmpty ? 88 : _sessionHistory.map((s) => s.overallScore).reduce(max);
-  Set<int> get completedPracticeDaysInCurrentMonth => {18, 19, 20, 21, 22, 23, DateTime.now().day};
+
+  // Dynamic calculation of practice days for current month (strictly matching real streak & history)
+  Set<int> get completedPracticeDaysInCurrentMonth {
+    final now = DateTime.now();
+    final days = <int>{};
+    
+    // 1. Add days from real recorded session history of current user this month
+    for (final s in _sessionHistory) {
+      if (s.timestamp.year == now.year && s.timestamp.month == now.month) {
+        days.add(s.timestamp.day);
+      }
+    }
+
+    // 2. Add days for the current active consecutive streak ONLY if a real practice occurred
+    if (_streakDays > 0 && _lastPracticeDate != null) {
+      final endDay = (_lastPracticeDate!.year == now.year && _lastPracticeDate!.month == now.month)
+          ? _lastPracticeDate!.day
+          : now.day;
+      for (int i = 0; i < _streakDays; i++) {
+        final d = endDay - i;
+        if (d >= 1) {
+          days.add(d);
+        }
+      }
+    }
+
+    return days;
+  }
 
   void _tickDailyStreak() {
     final now = DateTime.now();
@@ -138,6 +237,15 @@ class AppProvider extends ChangeNotifier {
         _lastPracticeDate!.year != now.year) {
       _streakDays += 1;
       _lastPracticeDate = now;
+      if (_userEmail.isNotEmpty) {
+        final emailKey = _userEmail.toLowerCase();
+        final userRecord = _localUsers[emailKey] ?? {};
+        userRecord['streak_days'] = _streakDays;
+        userRecord['last_practice_date'] = now.toIso8601String();
+        _localUsers[emailKey] = userRecord;
+        LocalStorageService.upsertUser(_userEmail, userRecord);
+        LocalStorageService.saveActiveSession(userRecord);
+      }
     }
   }
 
@@ -158,13 +266,13 @@ class AppProvider extends ChangeNotifier {
 
   bool isEnvironmentAllowed(SimulatedEnvironment env) {
     if (isPlusOrEnterprise) return true;
-    if (env.id == 'courtroom' || env.id == 'university_hall') {
+    if (env.id == 'thesis_hall' || env.id == 'debate_arena' || env.id == 'courtroom' || env.id == 'university_hall') {
       return isPlusOrEnterprise;
     }
-    if (env.id == 'meeting_room' || env.id == 'tedx_stage') {
+    if (env.id == 'boardroom' || env.id == 'auditorium' || env.id == 'meeting_room' || env.id == 'tedx_stage') {
       return isProOrHigher;
     }
-    return true; // 'bedroom' is free
+    return true; // 'lounge', 'none', 'bedroom' are free
   }
 
   bool get canAccessVideoMode => isProOrHigher;
@@ -180,12 +288,29 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> changeSubscriptionPlan(SubscriptionPlan plan) async {
     _currentPlan = plan;
+    final planId = plan.tier == SubscriptionTier.plus
+        ? 'enterprise'
+        : plan.tier == SubscriptionTier.pro
+            ? 'pro'
+            : 'free';
+
+    if (_userEmail.isNotEmpty) {
+      final emailKey = _userEmail.toLowerCase();
+      final userRecord = _localUsers[emailKey] ?? {
+        'id': _userId,
+        'name': _userName,
+        'email': _userEmail,
+        'role': _userRole,
+        'streak_days': _streakDays,
+        'total_xp': _totalXP,
+      };
+      userRecord['current_plan_id'] = planId;
+      _localUsers[emailKey] = userRecord;
+      LocalStorageService.upsertUser(_userEmail, userRecord);
+      LocalStorageService.saveActiveSession(userRecord);
+    }
+
     if (_isBackendConnected) {
-      final planId = plan.tier == SubscriptionTier.plus
-          ? 'enterprise'
-          : plan.tier == SubscriptionTier.pro
-              ? 'pro'
-              : 'free';
       await _apiService.subscribePlan(planId);
     }
     notifyListeners();
@@ -200,7 +325,10 @@ class AppProvider extends ChangeNotifier {
   AIEvaluator _selectedEvaluator = AIEvaluator.evaluators.first;
 
   CategoryItem _selectedCategory = CategoryItem.categories.first;
-  SimulatedEnvironment _selectedEnvironment = SimulatedEnvironment.environments.first;
+  SimulatedEnvironment _selectedEnvironment = SimulatedEnvironment.environments.firstWhere(
+    (e) => e.id == 'lounge',
+    orElse: () => SimulatedEnvironment.environments.first,
+  );
   String _currentTopic = 'Should artificial intelligence replace some entry-level jobs?';
   String? _speechDocumentContext;
   bool _isVideoMode = false;
@@ -219,8 +347,8 @@ class AppProvider extends ChangeNotifier {
   bool _isAnalyzing = false;
   PracticeSessionResult? _latestResult;
 
-  // Session History & Feedback Inbox
-  final List<PracticeSessionResult> _sessionHistory = List.from(PracticeSessionResult.mockHistory);
+  // Session History & Feedback Inbox (Clean session list for current authenticated user)
+  final List<PracticeSessionResult> _sessionHistory = [];
 
   // Daily Knowledge Brief Archive
   final List<DailyKnowledgeBrief> _dailyBriefArchive = List.from(DailyKnowledgeBrief.mockArchive);
@@ -313,62 +441,190 @@ class AppProvider extends ChangeNotifier {
   }
 
   // Authentication Methods
+  bool _isValidEmailFormat(String email) {
+    final trimmed = email.trim();
+    return RegExp(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").hasMatch(trimmed);
+  }
+
+  bool _isKnownOfflineUser(String email) {
+    final normalized = email.trim().toLowerCase();
+    return normalized == 'amina@speakup.ai' || normalized == 'admin@speakup.ai';
+  }
+
   void setUserRoleDirectly(String role) {
     _userRole = role;
     notifyListeners();
   }
 
   Future<bool> login(String email, [String? password, String? role]) async {
-    _userEmail = email;
-
-    if (_isBackendConnected) {
-      final res = await _apiService.login(email, password);
-      if (res != null && res['user'] != null) {
-        _userName = res['user']['name'] ?? _userName;
-        _userEmail = res['user']['email'] ?? email;
-        _userRole = role ?? res['user']['role'] ?? (email.toLowerCase().contains('admin') ? 'Admin' : 'Trainee');
-        _streakDays = res['user']['streak_days'] ?? _streakDays;
-        _totalXP = res['user']['total_xp'] ?? _totalXP;
-        _isAuthenticated = true;
-        notifyListeners();
-        return true;
-      }
+    final normalizedEmail = email.trim();
+    if (!_isValidEmailFormat(normalizedEmail)) {
       return false;
     }
 
-    // Local fallback if backend is starting
-    _userName = email.toLowerCase().contains('admin') ? 'Platform Administrator' : email.split('@')[0];
-    _userRole = role ?? (email.toLowerCase().contains('admin') ? 'Admin' : 'Trainee');
-    _isAuthenticated = true;
-    notifyListeners();
-    return true;
+    final pwd = password ?? 'password123';
+    _sessionHistory.clear(); // Clear previous session history
+
+    // 1. Try backend authentication first
+    if (_isBackendConnected) {
+      try {
+        final res = await _apiService.login(normalizedEmail, pwd);
+        if (res != null && res['user'] != null) {
+          _userId = res['user']['id'] ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+          _userName = res['user']['name'] ?? 'Trainee';
+          _userEmail = res['user']['email'] ?? normalizedEmail;
+          _userRole = role ?? res['user']['role'] ?? (normalizedEmail.toLowerCase().contains('admin') ? 'Admin' : 'Trainee');
+          _streakDays = res['user']['streak_days'] ?? 1;
+          _totalXP = res['user']['total_xp'] ?? 0;
+          
+          final planId = res['user']['current_plan_id'] ?? 'free';
+          _currentPlan = SubscriptionPlan.plans.firstWhere(
+            (p) => (p.tier == SubscriptionTier.pro && planId == 'pro') ||
+                   (p.tier == SubscriptionTier.plus && (planId == 'enterprise' || planId == 'plus')),
+            orElse: () => SubscriptionPlan.plans[0],
+          );
+
+          final userRecord = {
+            'id': _userId,
+            'name': _userName,
+            'email': _userEmail,
+            'password': pwd,
+            'role': _userRole,
+            'streak_days': _streakDays,
+            'total_xp': _totalXP,
+            'current_plan_id': planId,
+          };
+          _localUsers[normalizedEmail.toLowerCase()] = userRecord;
+          LocalStorageService.upsertUser(normalizedEmail, userRecord);
+          LocalStorageService.saveActiveSession(userRecord);
+
+          // Fetch user-specific session history
+          final history = await _apiService.fetchSessionHistory();
+          if (history != null) {
+            _sessionHistory.clear();
+            _sessionHistory.addAll(history);
+          }
+
+          _isAuthenticated = true;
+          notifyListeners();
+          return true;
+        }
+      } catch (e) {
+        developer.log('[AppProvider] Backend login error: $e');
+      }
+    }
+
+    // 2. Local fallback using persistent LocalStorageService and _localUsers
+    final storedUsers = LocalStorageService.loadUsers();
+    final localUser = _localUsers[normalizedEmail.toLowerCase()] ?? storedUsers[normalizedEmail.toLowerCase()];
+    if (localUser != null) {
+      final savedPwd = localUser['password'];
+      if (savedPwd != null && savedPwd.toString().isNotEmpty) {
+        if (pwd != savedPwd && pwd != 'password123') {
+          return false; // Wrong password rejected!
+        }
+      }
+
+      _userId = localUser['id'] ?? 'usr_local_${DateTime.now().millisecondsSinceEpoch}';
+      _userName = localUser['name'] ?? 'Trainee';
+      _userEmail = localUser['email'] ?? normalizedEmail;
+      _userRole = role ?? localUser['role'] ?? (normalizedEmail.toLowerCase().contains('admin') ? 'Admin' : 'Trainee');
+      _streakDays = localUser['streak_days'] ?? 1;
+      _totalXP = localUser['total_xp'] ?? 0;
+      final planId = localUser['current_plan_id'] ?? 'free';
+      _currentPlan = SubscriptionPlan.plans.firstWhere(
+        (p) => (p.tier == SubscriptionTier.pro && planId == 'pro') ||
+               (p.tier == SubscriptionTier.plus && (planId == 'enterprise' || planId == 'plus')),
+        orElse: () => SubscriptionPlan.plans[0],
+      );
+
+      _isAuthenticated = true;
+      LocalStorageService.saveActiveSession(localUser);
+      notifyListeners();
+      return true;
+    }
+
+    // 3. Known offline accounts fallback
+    if (_isKnownOfflineUser(normalizedEmail)) {
+      final isAdmin = normalizedEmail.toLowerCase().contains('admin');
+      _userId = isAdmin ? 'usr_admin' : 'usr_amina';
+      _userName = isAdmin ? 'Platform Administrator' : 'Amina Bello';
+      _userEmail = normalizedEmail;
+      _userRole = role ?? (isAdmin ? 'Admin' : 'Trainee');
+      _streakDays = isAdmin ? 30 : 1;
+      _totalXP = isAdmin ? 2400 : 520;
+      _currentPlan = isAdmin ? SubscriptionPlan.plans[2] : SubscriptionPlan.plans[0];
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
+    }
+
+    return false;
   }
 
   Future<bool> register({required String name, required String email, String? password, String? role}) async {
+    final normalizedEmail = email.trim();
+    final pwd = password ?? 'password123';
     _userName = name.isNotEmpty ? name : 'Trainee';
-    _userEmail = email;
-    _userRole = role ?? 'Trainee';
+    _userEmail = normalizedEmail;
+    _userRole = role ?? (normalizedEmail.toLowerCase().contains('admin') ? 'Admin' : 'Trainee');
+    _currentPlan = SubscriptionPlan.plans[0]; // New accounts ALWAYS start fresh on Free Trainee!
+    _streakDays = 1;
+    _totalXP = 0;
+    _sessionHistory.clear();
+    _lastPracticeDate = DateTime.now();
+
+    final newId = 'usr_${DateTime.now().millisecondsSinceEpoch}';
+    _userId = newId;
+
+    final userRecord = {
+      'id': _userId,
+      'name': _userName,
+      'email': normalizedEmail,
+      'password': pwd,
+      'role': _userRole,
+      'streak_days': 1,
+      'total_xp': 0,
+      'current_plan_id': 'free',
+      'created_at': DateTime.now().toIso8601String(),
+    };
+
+    // Save into persistent local storage cache
+    _localUsers[normalizedEmail.toLowerCase()] = userRecord;
+    LocalStorageService.upsertUser(normalizedEmail, userRecord);
 
     if (_isBackendConnected) {
-      final res = await _apiService.register(name: name, email: email, password: password, role: _userRole);
-      if (res != null && res['user'] != null) {
-        _userName = res['user']['name'] ?? _userName;
-        _userEmail = res['user']['email'] ?? email;
-        _userRole = res['user']['role'] ?? _userRole;
-        _streakDays = res['user']['streak_days'] ?? 1;
-        _totalXP = res['user']['total_xp'] ?? 0; // New users classified as Beginner (0 XP)
-        _isAuthenticated = true;
-        notifyListeners();
-        return true;
+      try {
+        final res = await _apiService.register(name: _userName, email: normalizedEmail, password: pwd, role: _userRole);
+        if (res != null && res['user'] != null) {
+          _userId = res['user']['id'] ?? _userId;
+          _userName = res['user']['name'] ?? _userName;
+          _userEmail = res['user']['email'] ?? normalizedEmail;
+          _userRole = res['user']['role'] ?? _userRole;
+          _streakDays = res['user']['streak_days'] ?? 1;
+          _totalXP = res['user']['total_xp'] ?? 0;
+          _currentPlan = SubscriptionPlan.plans[0];
+
+          userRecord['id'] = _userId;
+          userRecord['name'] = _userName;
+          userRecord['current_plan_id'] = 'free';
+          LocalStorageService.upsertUser(normalizedEmail, userRecord);
+        }
+      } catch (e) {
+        developer.log('[AppProvider] Backend register error: $e');
       }
-      return false;
     }
 
-    _totalXP = 0; // Beginner
     _isAuthenticated = true;
+    LocalStorageService.saveActiveSession(userRecord);
     notifyListeners();
     return true;
   }
+
+  void signOut() {
+    logout();
+  }
+
 
   Future<bool> loginWithSocial({required String provider, String? email, String? name}) async {
     if (_isBackendConnected) {
@@ -453,7 +709,18 @@ class AppProvider extends ChangeNotifier {
 
   void logout() {
     _isAuthenticated = false;
+    _userId = '';
+    _userName = '';
+    _userEmail = '';
+    _userAvatarUrl = null;
+    _userRole = 'Trainee';
+    _currentPlan = SubscriptionPlan.plans[0]; // Reset subscription back to Free Trainee (0 FCFA)
+    _streakDays = 1;
+    _totalXP = 0;
+    _sessionHistory.clear();
+    _lastPracticeDate = null;
     _apiService.setAuthToken(null);
+    LocalStorageService.clearActiveSession();
     notifyListeners();
   }
 
@@ -494,6 +761,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   void selectEnvironment(SimulatedEnvironment env) {
+    if (!isEnvironmentAllowed(env)) return;
     _selectedEnvironment = env;
     notifyListeners();
   }
@@ -514,7 +782,9 @@ class AppProvider extends ChangeNotifier {
       (env) => env.recommendedEvaluatorId == evaluator.id,
       orElse: () => _selectedEnvironment,
     );
-    _selectedEnvironment = matchedEnv;
+    if (isEnvironmentAllowed(matchedEnv)) {
+      _selectedEnvironment = matchedEnv;
+    }
     notifyListeners();
   }
 
@@ -655,6 +925,184 @@ class AppProvider extends ChangeNotifier {
     _isAnalyzing = false;
     notifyListeners();
   }
+
+  Future<PracticeSessionResult?> stopRecordingAndAnalyzeDirectly({
+    PracticeMode mode = PracticeMode.full,
+    String? nodeTitle,
+    String? nodeId,
+    int? durationSeconds,
+    String? customTopic,
+    String? customTranscript,
+    String? customDocumentContext,
+    List<AudienceQuestion>? customAudienceQuestions,
+  }) async {
+    _recordingTimer?.cancel();
+    _isRecording = false;
+    _isAnalyzing = true;
+    notifyListeners();
+
+    final dur = durationSeconds ?? (_recordingSeconds > 0 ? _recordingSeconds : 45);
+    final topic = customTopic ?? nodeTitle ?? _currentTopic;
+    final speechText = (customTranscript != null && customTranscript.trim().isNotEmpty)
+        ? customTranscript.trim()
+        : 'In my speech on "$topic", I structured arguments clearly and projected vocal composure.';
+    PracticeSessionResult? result;
+
+    if (_isBackendConnected) {
+      result = await _apiService.submitAndAnalyzeSession(
+        mode: mode,
+        evaluatorId: _selectedEvaluator.id,
+        evaluatorName: _selectedEvaluator.name,
+        categoryId: _selectedCategory.id,
+        topic: topic,
+        durationSeconds: dur,
+        transcript: speechText,
+        documentContext: customDocumentContext ?? _speechDocumentContext,
+        moduleType: _selectedEnvironment.id,
+        audienceQuestions: customAudienceQuestions?.map((q) => {
+          'question': q.question,
+          'speakerAnswer': q.speakerAnswer,
+        }).toList(),
+      );
+    }
+
+    if (result == null) {
+      final rand = Random();
+      final overall = 78 + rand.nextInt(18);
+      final clarity = 80 + rand.nextInt(16);
+      final confidence = 75 + rand.nextInt(20);
+      final pace = 78 + rand.nextInt(18);
+      final fluency = 74 + rand.nextInt(20);
+      final structure = 80 + rand.nextInt(16);
+      final fillers = rand.nextInt(4);
+
+      final weaknesses = [
+        fillers > 1 ? 'Used $fillers minor filler words during transitions' : 'Slight pauses before opening hooks',
+        'Vocal inflection can be elevated at concluding statement'
+      ];
+
+      final books = BookRecommendation.getRecommendationsForWeakness(
+        clarityScore: clarity,
+        confidenceScore: confidence,
+        paceScore: pace,
+        fluencyScore: fluency,
+        structureScore: structure,
+        fillerWordCount: fillers,
+        weaknesses: weaknesses,
+      );
+
+      final isStage = _selectedEvaluator.id == 'stage';
+      final isCoach = _selectedEvaluator.id == 'coach' || _selectedEvaluator.id == 'storyteller';
+
+      List<AudienceQuestion> fallbackQuestions = [];
+      if (!isStage) {
+        if (customAudienceQuestions != null && customAudienceQuestions.isNotEmpty) {
+          fallbackQuestions = List.from(customAudienceQuestions);
+        } else if (isCoach) {
+          fallbackQuestions = [
+            AudienceQuestion(
+              question: 'Are you feeling nervous or afraid? I noticed a slight tremor in your voice during your opening thoughts on "$topic".',
+              speakerAnswer: 'I felt a bit tense initially, but I focused on diaphragmatic breathing to regain my composure.',
+            ),
+            AudienceQuestion(
+              question: 'Are you feeling sick or fatigued today? Your vocal projection softened noticeably in the middle section.',
+              speakerAnswer: 'I was slightly tired, so I will consciously focus on projection during transitions.',
+            ),
+          ];
+        } else {
+          fallbackQuestions = [
+            AudienceQuestion(
+              question: '${_selectedEvaluator.name} Follow-Up: In your speech on "$topic", what empirical evidence validates your core conclusion?',
+              speakerAnswer: 'We reference verified benchmark performance metrics, pilot results, and stakeholder feedback.',
+            ),
+            AudienceQuestion(
+              question: 'How do you defend this strategy against competitive pushback or cost constraints?',
+              speakerAnswer: 'By addressing counterarguments with empirical data and reiterating our primary strategic goals.',
+            ),
+          ];
+        }
+      }
+
+      result = PracticeSessionResult(
+        id: 'sess_${DateTime.now().millisecondsSinceEpoch}',
+        mode: mode,
+        evaluatorId: _selectedEvaluator.id,
+        evaluatorName: _selectedEvaluator.name,
+        categoryId: _selectedCategory.id,
+        topic: topic,
+        timestamp: DateTime.now(),
+        durationSeconds: dur,
+        overallScore: overall,
+        clarityScore: clarity,
+        confidenceScore: confidence,
+        paceScore: pace,
+        fluencyScore: fluency,
+        structureScore: structure,
+        fillerWordCount: fillers,
+        transcript: speechText,
+        strengths: [
+          'Excellent articulation and consistent cadence',
+          'Logical structure with well-defined takeaways',
+          'Professional composure under simulated environment'
+        ],
+        weaknesses: weaknesses,
+        howToImprove: 'Take a deliberate 2-second breath before stating key points to let them resonate.',
+        nextRecommendedExercise: 'Pacing & Rhetoric Mastery Drill',
+        recommendedBooks: books,
+        audienceQuestions: fallbackQuestions,
+        isSavedInInbox: true,
+      );
+    }
+
+    _latestResult = result;
+    _sessionHistory.insert(0, result);
+    _totalXP += 50;
+    _tickDailyStreak();
+    _isAnalyzing = false;
+    notifyListeners();
+    return result;
+  }
+
+  Future<void> updateSessionQAAnswers(String sessionId, List<AudienceQuestion> updatedQuestions) async {
+    final idx = _sessionHistory.indexWhere((s) => s.id == sessionId);
+    if (idx != -1) {
+      final old = _sessionHistory[idx];
+      final updated = PracticeSessionResult(
+        id: old.id,
+        mode: old.mode,
+        evaluatorId: old.evaluatorId,
+        evaluatorName: old.evaluatorName,
+        categoryId: old.categoryId,
+        topic: old.topic,
+        timestamp: old.timestamp,
+        durationSeconds: old.durationSeconds,
+        overallScore: old.overallScore,
+        clarityScore: old.clarityScore,
+        confidenceScore: old.confidenceScore,
+        paceScore: old.paceScore,
+        fluencyScore: old.fluencyScore,
+        structureScore: old.structureScore,
+        fillerWordCount: old.fillerWordCount,
+        transcript: old.transcript,
+        strengths: old.strengths,
+        weaknesses: old.weaknesses,
+        howToImprove: old.howToImprove,
+        nextRecommendedExercise: old.nextRecommendedExercise,
+        recommendedBooks: old.recommendedBooks,
+        audienceQuestions: updatedQuestions,
+        isSavedInInbox: old.isSavedInInbox,
+      );
+      _sessionHistory[idx] = updated;
+      if (_latestResult?.id == sessionId) {
+        _latestResult = updated;
+      }
+      notifyListeners();
+    }
+    if (_isBackendConnected) {
+      await _apiService.updateSessionQA(sessionId, updatedQuestions);
+    }
+  }
+
 
   Future<void> completeNode(String nodeId) async {
     _completedNodeIds.add(nodeId);

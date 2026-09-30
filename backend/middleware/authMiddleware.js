@@ -8,8 +8,7 @@ async function authenticateToken(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    // If no token, attach default demo user for seamless interaction
-    req.user = await userRepository.findById('usr_amina');
+    req.user = null;
     return next();
   }
 
@@ -19,7 +18,7 @@ async function authenticateToken(req, res, next) {
     req.user = user || { id: decoded.id, email: decoded.email, role: decoded.role };
     next();
   } catch (err) {
-    req.user = await userRepository.findById('usr_amina');
+    req.user = null;
     next();
   }
 }

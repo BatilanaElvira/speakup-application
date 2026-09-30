@@ -79,7 +79,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         GestureDetector(
-                          onTap: () => onNavigateTab(3), // Navigate to Profile Tab
+                          onTap: () => onNavigateTab(4), // Navigate to Profile Tab (index 4)
                           child: Container(
                             width: 38,
                             height: 38,

@@ -60,46 +60,38 @@ class SimulatedEnvironmentScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Top Bar: Badge on the left, Switch on the right (with shrinkWrap)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Text(isEnabled ? currentEnv.emoji : '⚡', style: const TextStyle(fontSize: 32)),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: isEnabled
-                                        ? AppColors.white.withValues(alpha: 0.25)
-                                        : Colors.white24,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    isEnabled ? 'SIMULATION ACTIVE' : 'CLEAN STUDIO MODE',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isEnabled
+                                ? AppColors.white.withValues(alpha: 0.25)
+                                : Colors.white24,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isEnabled ? Icons.sensors_rounded : Icons.sensors_off_rounded,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                isEnabled ? 'SIMULATION ACTIVE' : 'CLEAN STUDIO MODE',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  isEnabled ? currentEnv.title : 'Pure Focus Studio',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 17,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                         Switch(
                           value: isEnabled,
@@ -107,11 +99,29 @@ class SimulatedEnvironmentScreen extends StatelessWidget {
                           activeTrackColor: AppColors.secondaryTeal,
                           inactiveThumbColor: AppColors.white,
                           inactiveTrackColor: Colors.white30,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           onChanged: (val) => provider.toggleSimulatedEnvironmentEnabled(val),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(isEnabled ? currentEnv.emoji : '⚡', style: const TextStyle(fontSize: 32)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            isEnabled ? currentEnv.title : 'Pure Focus Studio',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
                       isEnabled
                           ? 'Trainees can practice with immersive background acoustics, realistic audience dynamics, and evaluator-tailored criteria.'
@@ -330,7 +340,7 @@ class SimulatedEnvironmentScreen extends StatelessWidget {
                   final isSelected = currentEnv.id == env.id;
                   final isRecommended = env.recommendedEvaluatorId == currentEvaluator.id;
                   final isAllowed = provider.isEnvironmentAllowed(env);
-                  final isPlusRequired = env.id == 'courtroom' || env.id == 'university_hall';
+                  final isPlusRequired = env.id == 'thesis_hall' || env.id == 'debate_arena' || env.id == 'courtroom' || env.id == 'university_hall';
 
                   return GestureDetector(
                     onTap: isEnabled
@@ -602,10 +612,10 @@ class SimulatedEnvironmentScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
 
-              // 6. APPLY & SAVE BUTTON
+              // 6. ACTION BUTTON: SAVE SETTINGS & RETURN
               SizedBox(
                 width: double.infinity,
-                height: 54,
+                height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -622,14 +632,14 @@ class SimulatedEnvironmentScreen extends StatelessWidget {
                     );
                     Navigator.pop(context);
                   },
-                  icon: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 22),
-                  label: Text(
-                    isEnabled ? 'SAVE & START IN ${currentEnv.title.toUpperCase()}' : 'SAVE & PRACTICE IN CLEAN STUDIO',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 0.5),
+                  icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                  label: const Text(
+                    'SAVE ENVIRONMENT & RETURN',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryBlue,
-                    elevation: 4,
+                    elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
                 ),

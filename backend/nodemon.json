@@ -1,0 +1,21 @@
+{
+  "watch": [
+    "controllers",
+    "middleware",
+    "models",
+    "repositories",
+    "routes",
+    "services",
+    "config",
+    "server.js"
+  ],
+  "ignore": [
+    "data/*",
+    ".storage/*",
+    ".storage",
+    "*.json",
+    "node_modules",
+    "test/*"
+  ],
+  "ext": "js,env"
+}
