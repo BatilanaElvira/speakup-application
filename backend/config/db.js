@@ -349,6 +349,14 @@ async function initDB() {
       await pool.query(seedSql);
     }
 
+    // Safe migration for existing MySQL instances (e.g. Aiven)
+    try {
+      await pool.query(`ALTER TABLE practice_sessions ADD COLUMN audience_questions_json TEXT`);
+    } catch (_) {}
+    try {
+      await pool.query(`ALTER TABLE practice_sessions ADD COLUMN recommended_books_json TEXT`);
+    } catch (_) {}
+
     console.log(`=======================================================`);
     console.log(`🟢 [MySQL Persistent DB] Connected to database '${database}' on ${host}:${port}`);
     if (useSsl) console.log(`🔒 [SSL Encrypted] Cloud database connection secure.`);
