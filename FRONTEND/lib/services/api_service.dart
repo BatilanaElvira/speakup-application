@@ -26,7 +26,9 @@ class ApiService {
       }
       return liveServerUrl;
     }
-    return const bool.fromEnvironment('dart.vm.product') ? liveServerUrl : localServerUrl;
+    // On native mobile (Android / iOS):
+    // Connects to the live cloud backend on Render so the mobile app works on physical phones everywhere.
+    return liveServerUrl;
   }
 
   // Active base URL
